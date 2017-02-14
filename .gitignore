@@ -1,0 +1,8 @@
+config.yaml
+__pycache__
+*.pyc
+*.pyo
+*.swp
+*~
+.*
+*.db

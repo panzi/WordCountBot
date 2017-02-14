@@ -1,0 +1,7 @@
+host: irc.twitch.tv:6667 # IRC server to connect to.
+nickname: countbot       # IRC user name.
+password: XXX            # IRC password (if needed).
+period:   300            # Number of seconds in the past that are looked at.
+dbfile:   counts.db      # SQLite file. Can be :memory:
+channels:                # Channels to join.
+    - bloody_albatross
