@@ -177,8 +177,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 	def cmd_countperiod(self, event, time=None):
 		"""
 			Get or set the period in which words are counted for this channel.
-			The time can be given in hours, seconds or minutes, e.g.:
-				1h, 5min, 300sec, or 5m30s
+			The time can be given in hours, seconds or minutes, e.g.: 1h, 5min, 300sec, or 5m30s
 		"""
 		sender = event.source.nick
 		channel = event.target
@@ -265,7 +264,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 	def cmd_count1(self, event):
 		"""
-			Count all 1-character words.
+			Count all one-letter words.
 			Every word is only counted once per user.
 		"""
 		timestamp = timegm(gmtime())
@@ -394,23 +393,23 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		else:
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 
-	def home_cmd_gcinterval(self, event, gcinterval=None):
+	def home_cmd_gcinterval(self, event, value=None):
 		"""
 			Get or set gcinterval. WordCountBot-admin only.
 		"""
 		sender = event.source.nick
 		if self.is_allowed(sender, self.home_channel):
-			if gcinterval is None:
+			if value is None:
 				self.answer(event, "@%s: gcinterval = %d seconds" % (sender, self.gcinterval))
 			else:
 				try:
-					seconds = parse_time(gcinterval)
+					seconds = parse_time(value)
 					if seconds <= 0:
-						raise ValueError(gcinterval)
+						raise ValueError(value)
 				except ValueError as ex:
-					self.answer(event, "@%s: Illegal gcinterval: %s" % (sender, gcinterval))
+					self.answer(event, "@%s: Illegal gcinterval: %s" % (sender, value))
 				else:
-					self.gcinterval = gcinterval
+					self.gcinterval = seconds
 					self.answer(event, "@%s: gcinterval changed to %d seconds" % (sender, self.gcinterval))
 		else:
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
