@@ -1,13 +1,14 @@
-host: irc.twitch.tv:6667 # IRC server to connect to.
-nickname: countbot       # IRC user name.
-password: XXX            # IRC password (if needed).
-period:   300            # Number of seconds in the past that are looked at.
-dbfile:   counts.db      # SQLite file. Can be :memory:
-channels:                # Channels to join.
-    - bloody_albatross
-admins:                  # Users that always are treated as operators.
-    - bloody_albatross
-ignore:                  # Users that shall be ignored.
+host: irc.twitch.tv:6667    # IRC server to connect to.
+nickname: WordCountBot      # IRC user name.
+password: XXX               # IRC password (if needed).
+default_period: 300         # Number of seconds in the past that are looked at.
+gcinterval: 600             # Clean old counts every N seconds.
+home_channel: WordCountBot  # Channel for global operations and !join.
+channels:                   # Initial channels to join.
+    - bloody_albatross      # The home_channel will also be joined.
+admins:                     # Bot-admins for admin-only actions.
+    - bloody_albatross      # These users are also treated as operators in all channels.
+ignore:                     # Users that shall be ignored.
     - WordCountBot
     - Nightbot
     - Moobot
