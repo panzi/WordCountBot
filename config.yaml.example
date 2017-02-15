@@ -3,6 +3,7 @@ nickname: WordCountBot      # IRC user name.
 password: XXX               # IRC password. (optional)
 default_period: 300         # Number of seconds in the past that are looked at.
 gcinterval: 600             # Clean old counts every N seconds.
+state: state.yaml           # Load/dump state from/to file. (optional)
 home_channel: WordCountBot  # Channel for global operations and !join. (optional)
 channels:                   # Initial channels to join. (optional)
     - bloody_albatross      # The home_channel will also be joined.

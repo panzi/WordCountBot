@@ -11,6 +11,9 @@ from unicodedata import normalize as unicode_normalize
 WORDS = re.compile(r"(?:-\w|\w)[-\w]*")
 TIME = re.compile(r"\s*(\d+)\s*([a-z]+)?\s*")
 
+EXIT_EXCS = SystemExit, KeyboardInterrupt
+ROW_TYPES = tuple, list
+
 def normalize(word):
 	return unicode_normalize('NFC', word).lower()
 
@@ -57,9 +60,15 @@ def parse_time(time):
 
 class ChannelConfig:
 	__slots__ = 'period',
+
 	def __init__(self, period):
 		self.period = period
 		# maybe more in the future
+
+	def dump(self):
+		return {
+			'period': self.period
+		}
 
 class CounterBot(irc.bot.SingleServerIRCBot):
 	__slots__ = 'home_channel', 'period', 'gcinterval', 'admins', 'ignored_users', 'counts_per_channel', 'join_channels', 'channel_configs'
@@ -73,11 +82,14 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		self.ignored_users = set(user.lower() for user in ignored_users)
 		self.counts_per_channel = defaultdict(list)
 		self.channel_configs = defaultdict(lambda: ChannelConfig(self.default_period))
+		self.set_join_channels(channels)
+		self.connection.execute_delayed(self.gcinterval, self.run_gc)
+
+	def set_join_channels(self, channels):
 		channels = OrderedDict((normalize_channel(channel), True) for channel in channels)
 		if self.home_channel in channels:
 			del channels[self.home_channel]
 		self.join_channels = list(channels)
-		self.connection.execute_delayed(self.gcinterval, self.run_gc)
 
 	def run_gc(self):
 		timestamp = timegm(gmtime())
@@ -108,8 +120,16 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		self.connection.privmsg(self.home_channel or event.target, "Joined to %s." % event.target)
 
 	def on_part(self, connection, event):
+		channel = event.target
+
+		if channel in self.counts_per_channel:
+			del self.counts_per_channel[channel]
+
+		if channel in self.channel_configs:
+			del self.channel_configs[channel]
+
 		if self.home_channel is not None:
-			self.connection.privmsg(self.home_channel, "Parted from %s." % event.target)
+			self.connection.privmsg(self.home_channel, "Parted from %s." % channel)
 
 	def on_nicknameinuse(self, connection, event):
 		print('Error: nickname in use', file=sys.stderr)
@@ -139,23 +159,39 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 				method = 'cmd_'+command
 
 			if hasattr(self, method):
-				cmd = getattr(self, method)
+				try:
+					cmd = getattr(self, method)
 
-				min_argc = max_argc = cmd.__code__.co_argcount - 2
-				if cmd.__defaults__:
-					min_argc -= len(cmd.__defaults__)
-				if cmd.__code__.co_flags & 0x4:
-					max_argc = None
+					min_argc = max_argc = cmd.__code__.co_argcount - 2
+					if cmd.__defaults__:
+						min_argc -= len(cmd.__defaults__)
+					if cmd.__code__.co_flags & 0x4:
+						max_argc = None
 
-				argc = len(args)
-				if max_argc is not None and argc > max_argc:
-					self.answer(event, '@%s: Too many arguments. !%s takes no more than %d argument(s).' % (sender, command, max_argc))
+					argc = len(args)
+					if max_argc is not None and argc > max_argc:
+						self.answer(event,
+							'@%s: Too many arguments. !%s takes no more than %d argument(s).' %
+							(sender, command, max_argc))
 
-				elif argc < min_argc:
-					self.answer(event, '@%s: Not enough arguments. !%s takes at least %d argument(s).' % (sender, command, min_argc))
+					elif argc < min_argc:
+						self.answer(event,
+							'@%s: Not enough arguments. !%s takes at least %d argument(s).' %
+							(sender, command, min_argc))
 
-				else:
-					cmd(event, *args)
+					else:
+						cmd(event, *args)
+
+				except Exception as exc:
+					if isinstance(exc, EXIT_EXCS):
+						raise
+
+					print('Error: channel=%s, user=@%s, command=!%s: %s' %
+						(channel, sender, command, exc), file=sys.stderr)
+
+					self.connection.privmsg(self.home_channel,
+						'Error processing command !%s in channel %s performed by %s: %s' %
+						(command, channel, sender, exc))
 
 		else:
 			timestamp = timegm(gmtime())
@@ -458,6 +494,63 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		print('%s %s: %s' % (channel, self.connection.get_nickname(), message))
 		self.connection.privmsg(channel, message)
 
+	def dump(self):
+		return {
+			'version': '1.0',
+			'channels': [str(channel) for channel in self.channels],
+			'default_period': self.default_period,
+			'gcinterval': self.gcinterval,
+			'channel_configs': dict(
+				(channel, self.channel_configs[channel].dump())
+				for channel in self.channel_configs),
+			'counts_per_channel': dict(
+				(channel, [list(row) for row in self.counts_per_channel[channel]])
+				for channel in self.counts_per_channel)
+		}
+
+	def load(self, state):
+		version = state['version']
+		if version != '1.0':
+			raise ValueError('unsupported state version: %s' % version)
+
+		if 'default_period' in state:
+			default_period = int(state['default_period'])
+			if default_period <= 0:
+				raise ValueError('illegal default period: %r' % default_period)
+			self.default_period = default_period
+
+		if 'gcinterval' in state:
+			gcinterval = int(state['gcinterval'])
+			if gcinterval <= 0:
+				raise ValueError('illegal gcinterval: %r' % gcinterval)
+			self.gcinterval = gcinterval
+
+		if 'counts_per_channel' in state:
+			counts_per_channel = defaultdict(list)
+			for channel, rows in state['counts_per_channel'].items():
+				counts_per_channel[channel] = channel_counts = []
+				for row in rows:
+					if type(row) not in ROW_TYPES or len(row) != 3:
+						raise ValueError('illegal counts-row for channel %s: %r' % (channel, row))
+
+					user, word, timestamp = row
+
+					if type(user) is not str or type(word) is not str or type(timestamp) is not int:
+						raise ValueError('illegal counts-row for channel %s: %r' % (channel, row))
+
+					channel_counts.append((user, word, timestamp))
+
+			self.counts_per_channel = counts_per_channel
+
+		if 'channel_configs' in state:
+			channel_configs = defaultdict(lambda: ChannelConfig(self.default_period))
+			for channel, config in state['channel_configs'].items():
+				channel_configs[channel] = ChannelConfig(**config)
+			self.channel_configs = channel_configs
+
+		if 'channels' in state:
+			self.set_join_channels(state['channels'])
+
 def main(args):
 	import yaml
 	import argparse
@@ -472,6 +565,8 @@ def main(args):
 	server, port = config.get('host','irc.twitch.tv:6667').split(':', 1)
 	port = int(port)
 
+	statefile = config.get('state', 'state.yaml')
+
 	bot = CounterBot(
 		config.get('home_channel'),
 		int(config.get('default_period', 60 * 5)),
@@ -484,7 +579,28 @@ def main(args):
 		server,
 		port)
 
-	bot.start()
+	config = parser = opts = None
+
+	try:
+		with open(statefile, 'r') as fp:
+			print('Loading state from %s...' % statefile)
+			state = yaml.load(fp)
+	except FileNotFoundError:
+		pass
+	else:
+		bot.load(state)
+		state = fp = None
+
+	try:
+		print('Starting bot...')
+		bot.start()
+	finally:
+		print('Dumping state to %s...' % statefile)
+		state = bot.dump()
+		state = yaml.dump(state)
+
+		with open(statefile, 'w') as fp:
+			fp.write(state)
 
 if __name__ == '__main__':
 	import sys
