@@ -66,7 +66,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 	def __init__(self, home_channel, default_period, gcinterval, admins, ignored_users, nickname, channels, password=None, server='irc.twitch.tv', port=6667):
 		irc.bot.SingleServerIRCBot.__init__(self, [(server, port, password)], nickname, nickname)
-		self.home_channel = normalize_channel(home_channel)
+		self.home_channel = normalize_channel(home_channel) if home_channel else None
 		self.default_period = default_period
 		self.gcinterval = gcinterval
 		self.admins = set(admin.lower() for admin in admins)
@@ -98,16 +98,18 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		self.connection.execute_delayed(self.gcinterval, self.run_gc)
 
 	def on_welcome(self, connection, event):
-		connection.join(self.home_channel)
+		if self.home_channel is not None:
+			connection.join(self.home_channel)
 		for channel in self.join_channels:
 			connection.join(channel)
 		connection.cap('REQ', 'twitch.tv/membership')
 
 	def on_join(self, connection, event):
-		self.connection.privmsg(self.home_channel, "Joined to %s." % event.target)
+		self.connection.privmsg(self.home_channel or event.target, "Joined to %s." % event.target)
 
 	def on_part(self, connection, event):
-		self.connection.privmsg(self.home_channel, "Parted from %s." % event.target)
+		if self.home_channel is not None:
+			self.connection.privmsg(self.home_channel, "Parted from %s." % event.target)
 
 	def on_nicknameinuse(self, connection, event):
 		print('Error: nickname in use', file=sys.stderr)
@@ -165,6 +167,10 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 	def is_allowed(self, user, channel):
 		if user in self.admins:
 			return True
+
+		if channel is None:
+			return False
+
 		chan = self.channels[channel]
 		return chan.is_oper(user) or chan.is_admin(user) or chan.is_owner(user)
 
@@ -318,7 +324,8 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		channel_commands.sort()
 		home_commands.sort()
 		self.answer(event, '@%s: Commands: %s' % (sender, ', '.join(channel_commands)))
-		self.answer(event, '@%s: %s-only commands: %s' % (sender, self.home_channel, ', '.join(home_commands)))
+		if self.home_channel is not None:
+			self.answer(event, '@%s: %s-only commands: %s' % (sender, self.home_channel, ', '.join(home_commands)))
 
 	def home_cmd_help(self, event, command=None):
 		"""
@@ -467,7 +474,7 @@ def main(args):
 	port = int(port)
 
 	bot = CounterBot(
-		config['home_channel'],
+		config.get('home_channel'),
 		int(config.get('default_period', 60 * 5)),
 		int(config.get('gcinterval', 60 * 10)),
 		config.get('admins') or [],
