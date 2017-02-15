@@ -11,6 +11,7 @@ from unicodedata import normalize as unicode_normalize
 WORDS = re.compile(r"(?:-\w|\w)[-\w]*")
 TIME = re.compile(r"\s*(\d+)\s*([a-z]+)?\s*")
 
+MAX_COUNTS = 10
 EXIT_EXCS = SystemExit, KeyboardInterrupt
 ROW_TYPES = tuple, list
 
@@ -478,6 +479,8 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		if word_counts:
 			counts = list(word_counts.items())
 			counts.sort(key=lambda item: (item[1], item[0]), reverse=True)
+			if not self.is_allowed(event.source.nick, event.target) and len(counts) > MAX_COUNTS:
+				counts = counts[:MAX_COUNTS]
 			self.answer(event, ', '.join('%s: %d' % item for item in counts))
 		else:
 			self.answer(event, 'No words counted.')
