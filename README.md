@@ -98,8 +98,8 @@ Dependencies
 ------------
 
  * [Pytohn 3](https://www.python.org/)
- * [irc](https://pypi.org/project/irc/)
- * [yaml](http://pyyaml.org/wiki/PyYAML)
+ * [irc](https://pypi.org/project/irc/) Python library
+ * [yaml](http://pyyaml.org/wiki/PyYAML) Python library
 
 TODO
 ----
