@@ -93,6 +93,7 @@ channel. Not allowed for the home channel.
 Dependencies
 ------------
 
+ * [Pytohn 3](https://www.python.org/)
  * [irc](https://pypi.org/project/irc/)
  * [yaml](http://pyyaml.org/wiki/PyYAML)
 
