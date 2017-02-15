@@ -568,7 +568,7 @@ def main(args):
 	server, port = config.get('host','irc.twitch.tv:6667').split(':', 1)
 	port = int(port)
 
-	statefile = config.get('state', 'state.yaml')
+	statefile = config.get('state')
 
 	bot = CounterBot(
 		config.get('home_channel'),
@@ -584,26 +584,28 @@ def main(args):
 
 	config = parser = opts = None
 
-	try:
-		with open(statefile, 'r') as fp:
-			print('Loading state from %s...' % statefile)
-			state = yaml.load(fp)
-	except FileNotFoundError:
-		pass
-	else:
-		bot.load(state)
-		state = fp = None
+	if statefile:
+		try:
+			with open(statefile, 'r') as fp:
+				print('Loading state from %s...' % statefile)
+				state = yaml.load(fp)
+		except FileNotFoundError:
+			pass
+		else:
+			bot.load(state)
+			state = fp = None
 
 	try:
 		print('Starting bot...')
 		bot.start()
 	finally:
-		print('Dumping state to %s...' % statefile)
-		state = bot.dump()
-		state = yaml.dump(state)
+		if statefile:
+			print('\nDumping state to %s...' % statefile)
+			state = bot.dump()
+			state = yaml.dump(state)
 
-		with open(statefile, 'w') as fp:
-			fp.write(state)
+			with open(statefile, 'w') as fp:
+				fp.write(state)
 
 if __name__ == '__main__':
 	import sys
