@@ -42,6 +42,10 @@ Show the list of commands.
 Make WordCountBot join the given channel. Only allowed for operators of the
 given channel.
 
+**Note:** If I host this bot somewhere and too many people use it for any fee
+hosting quota I might disable this command/make it bot admin-only. You can
+always host the bot yourself!
+
 ### !leave channel
 
 Make WordCountBot leave the given channel. Only allowed for operators of the
