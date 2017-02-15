@@ -60,32 +60,32 @@ Commands
 
 These commands are available in the channels the bot has joined.
 
-# !count [words...]
+### !count [words...]
 
 Count given words or if none given all words. Every word is only counted once
 per user and only in the configured time period (the last few seconds/minutes).
 
-# !countint
+### !countint
 
 Count integer numbers. Every number is only counted once per user and only in
 the configured time period (the last few seconds/minutes).
 
-# !count1
+### !count1
 
 Count all one-letter words. Every word is only counted once per user and only in
 the configured time period (the last few seconds/minutes).
 
-# !clearcount
+### !clearcount
 
 Clear all counts of this channel. Only allowed for operators etc.
 
-# !countperiod [time]
+### !countperiod [time]
 
 Get or set the period in which words are counted for this channel. The time can
 be given in hours, seconds or minutes, e.g.: 1h, 5min, 300sec, or even
 combinations like 5m30s, but with no spaces between the parts.
 
-# !countleave
+### !countleave
 
 Make WordCountBot leave this channel. Only allowed for operators of the given
 channel. Not allowed for the home channel.
