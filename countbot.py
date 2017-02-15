@@ -395,7 +395,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 	def home_cmd_help(self, event, command=None):
 		"""
-			Show help to given command.
+			Show help to given command. For more see: https://github.com/panzi/WordCountBot
 		"""
 		sender = event.source.nick
 		if command is None:
