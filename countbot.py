@@ -59,6 +59,35 @@ def parse_time(time):
 
 	return seconds
 
+def format_time(seconds):
+	if seconds == 0:
+		return '0sec'
+
+	negative = seconds < 0
+	if negative:
+		seconds = -seconds
+	minutes  = seconds // 60
+	seconds -= minutes * 60
+	hours    = minutes // 60
+	minutes -= hours * 60
+
+	buf = []
+	if hours:
+		buf.append('%dh' % hours)
+
+	if minutes:
+		buf.append('%dmin' % minutes)
+
+	if seconds:
+		buf.append('%dsec' % seconds)
+
+	time = ' '.join(buf)
+
+	if negative:
+		time = '-'+time
+
+	return time
+
 class ChannelConfig:
 	__slots__ = 'period',
 
@@ -211,25 +240,26 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		chan = self.channels[channel]
 		return chan.is_oper(user) or chan.is_admin(user) or chan.is_owner(user)
 
-	def cmd_countperiod(self, event, time=None):
+	def cmd_countperiod(self, event, *time):
 		"""
 			Get or set the period in which words are counted for this channel.
-			The time can be given in hours, seconds or minutes, e.g.: 1h, 5min, 300sec, or 5m30s
+			The time can be given in hours, seconds or minutes, e.g.: 1h, 5min, 300sec, or 5m 30s
 		"""
 		sender = event.source.nick
 		channel = event.target
 		if self.is_allowed(sender, channel):
 			config = self.channel_configs[event.target]
-			if time is None:
-				self.answer(event, "@%s: count period = %d seconds" % (sender, config.period))
+			if not time:
+				self.answer(event, "@%s: count period = %s" % (sender, format_time(config.period)))
 			else:
+				time = ' '.join(time)
 				try:
 					seconds = parse_time(time)
 				except ValueError as ex:
 					self.answer(event, "@%s: Illegal count period: %s" % (sender, time))
 				else:
 					config.period = seconds
-					self.answer(event, "@%s: changed count period to %d seconds" % (sender, config.period))
+					self.answer(event, "@%s: changed count period to %s" % (sender, format_time(config.period)))
 		else:
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 
@@ -430,15 +460,16 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		else:
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 
-	def home_cmd_gcinterval(self, event, value=None):
+	def home_cmd_gcinterval(self, event, *value):
 		"""
 			Get or set gcinterval. WordCountBot-admin only.
 		"""
 		sender = event.source.nick
 		if self.is_allowed(sender, self.home_channel):
-			if value is None:
-				self.answer(event, "@%s: gcinterval = %d seconds" % (sender, self.gcinterval))
+			if not value:
+				self.answer(event, "@%s: gcinterval = %s" % (sender, format_time(self.gcinterval)))
 			else:
+				value = ' '.join(value)
 				try:
 					seconds = parse_time(value)
 					if seconds <= 0:
@@ -447,7 +478,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 					self.answer(event, "@%s: Illegal gcinterval: %s" % (sender, value))
 				else:
 					self.gcinterval = seconds
-					self.answer(event, "@%s: gcinterval changed to %d seconds" % (sender, self.gcinterval))
+					self.answer(event, "@%s: gcinterval changed to %s" % (sender, format_time(self.gcinterval)))
 		else:
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 

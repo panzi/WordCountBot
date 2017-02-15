@@ -87,7 +87,7 @@ Clear all counts of this channel. Only allowed for operators etc.
 
 Get or set the period in which words are counted for this channel. The time can
 be given in hours, seconds or minutes, e.g.: 1h, 5min, 300sec, or even
-combinations like 5m30s, but with no spaces between the parts.
+combinations like 5m 30s.
 
 ### !countleave
 
