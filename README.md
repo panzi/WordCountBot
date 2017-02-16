@@ -101,12 +101,6 @@ Dependencies
  * [irc](https://pypi.org/project/irc/) Python library
  * [yaml](http://pyyaml.org/wiki/PyYAML) Python library
 
-TODO
-----
-
- * Add config option for maximum message length. Twitch has a limit of 500
-   characters. I don't know if that are UTF-8 bytes, code points or graphemes.
-
 MIT License
 -----------
 
