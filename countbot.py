@@ -182,8 +182,6 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		channel = event.target
 		message = event.arguments[0]
 
-#		print('PUBMSG', channel, sender, message)
-
 		if message.startswith("!"):
 			command, *args = message.rstrip().split()
 			command = command[1:]
@@ -554,7 +552,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 					break
 
 				space_index = None
-				for i in range(next_index, index-1, -1):
+				for i in range(next_index, index - 1, -1):
 					byte = message_utf8[i]
 					if byte == 32 or byte == 9:
 						space_index = i
@@ -562,7 +560,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 				if space_index is None:
 					# at least don't cut in the middle of a multi-byte sequence
-					while True:
+					while next_index > index:
 						byte = message_utf8[next_index]
 						if byte < 128 or byte >= 192:
 							break
