@@ -3,6 +3,8 @@
 import re
 import sys
 import irc.bot
+import socket
+import traceback
 from time import gmtime
 from calendar import timegm
 from collections import defaultdict, OrderedDict
@@ -101,13 +103,17 @@ class ChannelConfig:
 		}
 
 class CounterBot(irc.bot.SingleServerIRCBot):
-	__slots__ = 'home_channel', 'period', 'gcinterval', 'admins', 'ignored_users', 'counts_per_channel', 'join_channels', 'channel_configs'
+	__slots__ = ('home_channel', 'period', 'gcinterval', 'admins', 'ignored_users',
+	             'counts_per_channel', 'join_channels', 'channel_configs',
+	             'max_message_length')
 
-	def __init__(self, home_channel, default_period, gcinterval, admins, ignored_users, nickname, channels, password=None, server='irc.twitch.tv', port=6667):
+	def __init__(self, home_channel, default_period, gcinterval, max_message_length,
+	             admins, ignored_users, nickname, channels, password=None, server='irc.twitch.tv', port=6667):
 		irc.bot.SingleServerIRCBot.__init__(self, [(server, port, password)], nickname, nickname)
 		self.home_channel = normalize_channel(home_channel) if home_channel else None
 		self.default_period = default_period
 		self.gcinterval = gcinterval
+		self.max_message_length = max_message_length
 		self.admins = set(admin.lower() for admin in admins)
 		self.ignored_users = set(user.lower() for user in ignored_users)
 		self.counts_per_channel = defaultdict(list)
@@ -216,8 +222,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 					if isinstance(exc, EXIT_EXCS):
 						raise
 
-					print('Error: channel=%s, user=@%s, command=!%s: %s' %
-						(channel, sender, command, exc), file=sys.stderr)
+					traceback.print_exc()
 
 					self.connection.privmsg(self.home_channel,
 						'Error processing command !%s in channel %s performed by %s: %s' %
@@ -512,7 +517,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 			counts.sort(key=lambda item: (item[1], item[0]), reverse=True)
 			if not self.is_allowed(event.source.nick, event.target) and len(counts) > MAX_COUNTS:
 				counts = counts[:MAX_COUNTS]
-			self.answer(event, ', '.join('%s: %d' % item for item in counts))
+			self.answer(event, 'Result: ' + ', '.join('%s: %d' % item for item in counts))
 		else:
 			self.answer(event, 'No words counted.')
 
@@ -520,13 +525,57 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		channel = event.target
 		nick = self.connection.get_nickname()
 		if event.source.nick != nick or self.channels[channel].is_oper(nick):
-			self._answer(channel, message)
+			self.chunked_privmsg(channel, message)
 		else:
-			self.connection.execute_delayed(1, lambda: self._answer(channel, message))
+			self.connection.execute_delayed(1, lambda: self.chunked_privmsg(channel, message))
 
-	def _answer(self, channel, message):
-		print('%s %s: %s' % (channel, self.connection.get_nickname(), message))
-		self.connection.privmsg(channel, message)
+	def _send_raw(self, bytes):
+		try:
+			self.connection.socket.send(bytes)
+		except socket.error:
+			self.connection.disconnect("Connection reset by peer.")
+
+	def chunked_privmsg(self, channel, message):
+		print('PRIVMSG %s :%s' % (channel, message))
+		maxlen = self.max_message_length
+		channel_utf8 = channel.encode('utf-8')
+		if maxlen is not None:
+			maxlen -= len(channel_utf8) + 11 # len("PRIVMSG "+...+" "+...+"\r\n")
+			if maxlen <= 0:
+				maxlen = 8
+		message_utf8 = message.encode('utf-8')
+		N = len(message_utf8)
+		if maxlen and N > maxlen:
+			index = 0
+			while index < N:
+				next_index = index + maxlen
+				if next_index >= N:
+					self._send_raw(b''.join((b'PRIVMSG ',channel_utf8,b' :',message_utf8[index:],b'\r\n')))
+					break
+
+				space_index = None
+				for i in range(next_index, index-1, -1):
+					byte = message_utf8[i]
+					if byte == 32 or byte == 9:
+						space_index = i
+						break
+
+				if space_index is None:
+					# at least don't cut in the middle of a multi-byte sequence
+					while True:
+						byte = message_utf8[next_index]
+						if byte < 128 or byte >= 192:
+							break
+						next_index -= 1
+					chunk = message_utf8[index:next_index]
+				else:
+					chunk = message_utf8[index:space_index].rstrip()
+					next_index = space_index + 1
+
+				self._send_raw(b''.join((b'PRIVMSG ',channel_utf8,b' :',chunk,b'\r\n')))
+				index = next_index
+		else:
+			self._send_raw(b''.join((b'PRIVMSG ',channel_utf8,b' :',message_utf8,b'\r\n')))
 
 	def dump(self):
 		return {
@@ -605,6 +654,7 @@ def main(args):
 		config.get('home_channel'),
 		int(config.get('default_period', 60 * 5)),
 		int(config.get('gcinterval', 60 * 10)),
+		int(config.get('max_message_length', 512)),
 		config.get('admins') or [],
 		config.get('ignore') or [],
 		config['nickname'],

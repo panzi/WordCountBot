@@ -3,6 +3,8 @@ nickname: WordCountBot      # IRC user name.
 password: XXX               # IRC password. (optional)
 default_period: 300         # Number of seconds in the past that are looked at.
 gcinterval: 600             # Clean old counts every N seconds.
+max_message_length: 512     # Post messages in chunks of N bytes. (optional)
+                            # This includes 'PRIVMSG #CHANNEL_NAME :' and '\r\n'
 state: state.yaml           # Load/dump state from/to file. (optional)
 home_channel: WordCountBot  # Channel for global operations and !join. (optional)
 channels:                   # Initial channels to join. (optional)
