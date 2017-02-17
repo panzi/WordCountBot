@@ -118,6 +118,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		self.ignored_users = set(user.lower() for user in ignored_users)
 		self.counts_per_channel = defaultdict(list)
 		self.channel_configs = defaultdict(lambda: ChannelConfig(self.default_period))
+		self.joined_channels = set()
 		self.set_join_channels(channels)
 		self.connection.execute_delayed(self.gcinterval, self.run_gc)
 
@@ -153,7 +154,10 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		connection.cap('REQ', 'twitch.tv/membership')
 
 	def on_join(self, connection, event):
-		self.connection.privmsg(self.home_channel or event.target, "Joined to %s." % event.target)
+		channel = event.target
+		if channel not in self.joined_channels:
+			self.joined_channels.add(channel)
+			self.chunked_privmsg(self.home_channel or channel, "Joined to %s." % channel)
 
 	def on_part(self, connection, event):
 		channel = event.target
@@ -164,8 +168,11 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		if channel in self.channel_configs:
 			del self.channel_configs[channel]
 
+		if channel in self.joined_channels:
+			self.joined_channels.remove(channel)
+
 		if self.home_channel is not None:
-			self.connection.privmsg(self.home_channel, "Parted from %s." % channel)
+			self.chunked_privmsg(self.home_channel, "Parted from %s." % channel)
 
 	def on_nicknameinuse(self, connection, event):
 		print('Error: nickname in use', file=sys.stderr)
@@ -222,7 +229,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 					traceback.print_exc()
 
-					self.connection.privmsg(self.home_channel,
+					self.chunked_privmsg(self.home_channel,
 						'Error processing command !%s in channel %s performed by %s: %s' %
 						(command, channel, sender, exc))
 
@@ -392,17 +399,20 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 		channel_commands.sort()
 		home_commands.sort()
-		self.answer(event, '@%s: Commands: %s' % (sender, ', '.join(channel_commands)))
+		message = '@%s: Commands: %s' % (sender, ', '.join(channel_commands))
 		if self.home_channel is not None:
-			self.answer(event, '@%s: %s-only commands: %s' % (sender, self.home_channel, ', '.join(home_commands)))
+			message += ' %s-only commands: %s' % (self.home_channel, ', '.join(home_commands))
+		self.answer(event, message)
 
 	def home_cmd_help(self, event, command=None):
 		"""
-			Show help to given command. For more see: https://github.com/panzi/WordCountBot
+			Show help to given command.
 		"""
 		sender = event.source.nick
 		if command is None:
-			self.answer(event, "@%s: type !commands for a list of commands or !help <command> for help to !command" % sender)
+			self.answer(event,
+				"@%s: type !commands for a list of commands or !help <command> "
+				"for help to !command. For more see: https://github.com/panzi/WordCountBot" % sender)
 		else:
 			channel = event.target
 			if command.startswith('!'):
@@ -510,14 +520,16 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 
 	def report_counts(self, event, word_counts):
+		period = self.channel_configs[event.target].period
 		if word_counts:
 			counts = list(word_counts.items())
 			counts.sort(key=lambda item: (item[1], item[0]), reverse=True)
 			if not self.is_allowed(event.source.nick, event.target) and len(counts) > MAX_COUNTS:
 				counts = counts[:MAX_COUNTS]
-			self.answer(event, 'Result: ' + ', '.join('%s: %d' % item for item in counts))
+			self.answer(event, 'Word-counts within the last %s: %s' % (
+				format_time(period), ', '.join('%s: %d' % item for item in counts)))
 		else:
-			self.answer(event, 'No words counted.')
+			self.answer(event, 'No words counted in the last %s.' % format_time(period))
 
 	def answer(self, event, message):
 		channel = event.target
@@ -534,7 +546,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 			self.connection.disconnect("Connection reset by peer.")
 
 	def chunked_privmsg(self, channel, message):
-		print('PRIVMSG %s :%s' % (channel, message))
+		print('%s: %s' % (channel, message))
 		maxlen = self.max_message_length
 		channel_utf8 = channel.encode('utf-8')
 		if maxlen is not None:
@@ -578,7 +590,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 	def dump(self):
 		return {
 			'version': '1.0',
-			'channels': [str(channel) for channel in self.channels],
+			'channels': list(self.joined_channels),
 			'default_period': self.default_period,
 			'gcinterval': self.gcinterval,
 			'channel_configs': dict(
