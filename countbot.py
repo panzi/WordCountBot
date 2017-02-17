@@ -90,22 +90,23 @@ def format_time(seconds):
 
 	return time
 
-class ChannelConfig:
-	__slots__ = 'period',
+class ChannelData:
+	__slots__ = 'period', 'counts'
 
-	def __init__(self, period):
+	def __init__(self, period, counts=None):
 		self.period = period
+		self.counts = counts if counts is not None else []
 		# maybe more in the future
 
 	def dump(self):
 		return {
-			'period': self.period
+			'period': self.period,
+			'counts': [list(row) for row in self.counts]
 		}
 
 class CounterBot(irc.bot.SingleServerIRCBot):
 	__slots__ = ('home_channel', 'period', 'gcinterval', 'admins', 'ignored_users',
-	             'counts_per_channel', 'join_channels', 'channel_configs',
-	             'max_message_length')
+	             'channel_data', 'join_channels', 'max_message_length')
 
 	def __init__(self, home_channel, default_period, gcinterval, max_message_length,
 	             admins, ignored_users, nickname, channels, password=None, server='irc.twitch.tv', port=6667):
@@ -116,8 +117,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		self.max_message_length = max_message_length
 		self.admins = set(admin.lower() for admin in admins)
 		self.ignored_users = set(user.lower() for user in ignored_users)
-		self.counts_per_channel = defaultdict(list)
-		self.channel_configs = defaultdict(lambda: ChannelConfig(self.default_period))
+		self.channel_data = defaultdict(lambda: ChannelData(self.default_period))
 		self.joined_channels = set()
 		self.set_join_channels(channels)
 		self.connection.execute_delayed(self.gcinterval, self.run_gc)
@@ -131,16 +131,15 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 	def run_gc(self):
 		timestamp = timegm(gmtime())
 		rowcount = 0
-		for channel, counts in self.counts_per_channel.items():
-			config = self.channel_configs[channel]
-			periodts = timestamp - config.period
+		for data in self.channel_data.values():
+			periodts = timestamp - data.period
 			index = 0
-			for index, (user, word, timestamp) in enumerate(counts):
+			for index, (user, word, timestamp) in enumerate(data.counts):
 				if timestamp >= periodts:
 					break
 
 			if index > 0:
-				del counts[:index]
+				del data.counts[:index]
 				rowcount += index
 
 		print('gc: Deleted %d rows.' % rowcount if rowcount != 1 else 'gc: Deleted 1 row.')
@@ -162,11 +161,8 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 	def on_part(self, connection, event):
 		channel = event.target
 
-		if channel in self.counts_per_channel:
-			del self.counts_per_channel[channel]
-
-		if channel in self.channel_configs:
-			del self.channel_configs[channel]
+		if channel in self.channel_data:
+			del self.channel_data[channel]
 
 		if channel in self.joined_channels:
 			self.joined_channels.remove(channel)
@@ -236,7 +232,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		else:
 			timestamp = timegm(gmtime())
 			words = WORDS.findall(message)
-			counts = self.counts_per_channel[channel]
+			counts = self.channel_data[channel].counts
 			for word in words:
 				counts.append((sender, normalize(word), timestamp))
 
@@ -258,9 +254,9 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		sender = event.source.nick
 		channel = event.target
 		if self.is_allowed(sender, channel):
-			config = self.channel_configs[event.target]
+			data = self.channel_data[event.target]
 			if not time:
-				self.answer(event, "@%s: count period = %s" % (sender, format_time(config.period)))
+				self.answer(event, "@%s: count period = %s" % (sender, format_time(data.period)))
 			else:
 				time = ' '.join(time)
 				try:
@@ -268,8 +264,8 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 				except ValueError as ex:
 					self.answer(event, "@%s: Illegal count period: %s" % (sender, time))
 				else:
-					config.period = seconds
-					self.answer(event, "@%s: changed count period to %s" % (sender, format_time(config.period)))
+					data.period = seconds
+					self.answer(event, "@%s: changed count period to %s" % (sender, format_time(data.period)))
 		else:
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 
@@ -280,8 +276,9 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		"""
 		timestamp = timegm(gmtime())
 		channel = event.target
-		periodts = timestamp - self.channel_configs[channel].period
-		channel_counts = self.counts_per_channel[channel]
+		data = self.channel_data[channel]
+		periodts = timestamp - data.period
+		channel_counts = data.counts
 		all_user_words = defaultdict(set)
 
 		if words:
@@ -318,8 +315,9 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		"""
 		timestamp = timegm(gmtime())
 		channel = event.target
-		periodts = timestamp - self.channel_configs[channel].period
-		channel_counts = self.counts_per_channel[channel]
+		data = self.channel_data[channel]
+		periodts = timestamp - data.period
+		channel_counts = data.counts
 		all_user_words = defaultdict(set)
 
 		word_counts = defaultdict(int)
@@ -346,8 +344,9 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		"""
 		timestamp = timegm(gmtime())
 		channel = event.target
-		periodts = timestamp - self.channel_configs[channel].period
-		channel_counts = self.counts_per_channel[channel]
+		data = self.channel_data[channel]
+		periodts = timestamp - data.period
+		channel_counts = data.counts
 		all_user_words = defaultdict(set)
 
 		word_counts = defaultdict(int)
@@ -370,9 +369,9 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		sender = event.source.nick
 		channel = event.target
 		if self.is_allowed(sender, channel):
-			rowcount = len(self.counts_per_channel[channel])
-			if rowcount > 0:
-				self.counts_per_channel[channel] = []
+			data = self.channel_data[channel]
+			rowcount = len(data.counts)
+			del data.counts[:]
 			self.answer(event, 'Deleted %d rows.' % rowcount if rowcount != 1 else 'Deleted 1 row.')
 		else:
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
@@ -520,7 +519,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 
 	def report_counts(self, event, word_counts):
-		period = self.channel_configs[event.target].period
+		period = self.channel_data[event.target].period
 		if word_counts:
 			counts = list(word_counts.items())
 			counts.sort(key=lambda item: (item[1], item[0]), reverse=True)
@@ -593,12 +592,9 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 			'channels': list(self.joined_channels),
 			'default_period': self.default_period,
 			'gcinterval': self.gcinterval,
-			'channel_configs': dict(
-				(channel, self.channel_configs[channel].dump())
-				for channel in self.channel_configs),
-			'counts_per_channel': dict(
-				(channel, [list(row) for row in self.counts_per_channel[channel]])
-				for channel in self.counts_per_channel)
+			'channel_data': dict(
+				(channel, self.channel_data[channel].dump())
+				for channel in self.channel_data)
 		}
 
 	def load(self, state):
@@ -611,6 +607,8 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 			if default_period <= 0:
 				raise ValueError('illegal default period: %r' % default_period)
 			self.default_period = default_period
+		else:
+			default_period = self.default_period
 
 		if 'gcinterval' in state:
 			gcinterval = int(state['gcinterval'])
@@ -618,28 +616,27 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 				raise ValueError('illegal gcinterval: %r' % gcinterval)
 			self.gcinterval = gcinterval
 
-		if 'counts_per_channel' in state:
-			counts_per_channel = defaultdict(list)
-			for channel, rows in state['counts_per_channel'].items():
-				counts_per_channel[channel] = channel_counts = []
-				for row in rows:
-					if type(row) not in ROW_TYPES or len(row) != 3:
-						raise ValueError('illegal counts-row for channel %s: %r' % (channel, row))
+		if 'channel_data' in state:
+			channel_data = defaultdict(lambda: ChannelData(self.default_period))
+			for channel, data in state['channel_data'].items():
+				period = data.get('period', default_period)
 
-					user, word, timestamp = row
+				rows = data.get('counts')
+				channel_counts = []
+				if rows:
+					for row in rows:
+						if type(row) not in ROW_TYPES or len(row) != 3:
+							raise ValueError('illegal counts-row for channel %s: %r' % (channel, row))
 
-					if type(user) is not str or type(word) is not str or type(timestamp) is not int:
-						raise ValueError('illegal counts-row for channel %s: %r' % (channel, row))
+						user, word, timestamp = row
 
-					channel_counts.append((user, word, timestamp))
+						if type(user) is not str or type(word) is not str or type(timestamp) is not int:
+							raise ValueError('illegal counts-row for channel %s: %r' % (channel, row))
 
-			self.counts_per_channel = counts_per_channel
+						channel_counts.append((user, word, timestamp))
 
-		if 'channel_configs' in state:
-			channel_configs = defaultdict(lambda: ChannelConfig(self.default_period))
-			for channel, config in state['channel_configs'].items():
-				channel_configs[channel] = ChannelConfig(**config)
-			self.channel_configs = channel_configs
+				channel_data[channel] = ChannelData(period, channel_counts)
+			self.channel_data = channel_data
 
 		if 'channels' in state:
 			self.set_join_channels(state['channels'])
