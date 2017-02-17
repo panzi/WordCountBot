@@ -690,10 +690,9 @@ def main(args):
 		if statefile:
 			print('\nDumping state to %s...' % statefile)
 			state = bot.dump()
-			state = yaml.dump(state)
 
 			with open(statefile, 'w') as fp:
-				fp.write(state)
+				yaml.dump(state, fp)
 
 if __name__ == '__main__':
 	import sys
