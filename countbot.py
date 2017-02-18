@@ -168,8 +168,8 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		if channel in self.joined_channels:
 			self.joined_channels.remove(channel)
 
-		if self.home_channel is not None:
-			self.chunked_privmsg(self.home_channel, "Parted from %s." % channel)
+			if self.home_channel is not None:
+				self.chunked_privmsg(self.home_channel, "Parted from %s." % channel)
 
 	def on_nicknameinuse(self, connection, event):
 		print('Error: nickname in use', file=sys.stderr)
