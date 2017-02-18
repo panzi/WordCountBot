@@ -22,6 +22,14 @@ get [here](https://twitchapps.com/tmi/).
 
 	python3 countbot.py
 
+### Options
+
+	-c FILE, --config=FILE     Read configuration from FILE.
+	         --env-config      Read configuration from the environment.
+
+When reading the configuration from the environment the keys are uppercase and
+prefixed with `COUNTBOT_`. Lists are comma separated.
+
 Home-Channel Commands
 ---------------------
 
