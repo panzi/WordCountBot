@@ -653,7 +653,7 @@ def main(args):
 
 	if opts.env_config:
 		config = {}
-		for key in ('host', 'nickname', 'password', 'default_period', 'gcinterval', 'max_message_length', 'state'):
+		for key in ('host', 'nickname', 'password', 'default_period', 'gcinterval', 'max_message_length', 'state', 'home_channel'):
 			envkey = 'COUNTBOT_'+key.upper()
 			value = os.getenv(envkey)
 			if value is not None:
