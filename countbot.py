@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import re
 import sys
 import irc.bot
@@ -647,10 +648,25 @@ def main(args):
 
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-c', '--config', default='config.yaml')
+	parser.add_argument('--env-config', help='read configuration from environment', action='store_true', default=False)
 	opts = parser.parse_args(args)
 
-	with open(opts.config,'rb') as fp:
-		config = yaml.load(fp)
+	if opts.env_config:
+		config = {}
+		for key in ('host', 'nickname', 'password', 'default_period', 'gcinterval', 'max_message_length', 'state'):
+			envkey = 'COUNTBOT_'+key.upper()
+			value = os.getenv(envkey)
+			if value is not None:
+				config[key] = value
+
+		for key in ('channels', 'admins', 'ignore'):
+			envkey = 'COUNTBOT_'+key.upper()
+			value = os.getenv(envkey)
+			if value is not None:
+				config[key] = value.split(',')
+	else:
+		with open(opts.config,'rb') as fp:
+			config = yaml.load(fp)
 
 	server, port = config.get('host','irc.twitch.tv:6667').split(':', 1)
 	port = int(port)
