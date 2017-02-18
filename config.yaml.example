@@ -1,8 +1,8 @@
 host: irc.twitch.tv:6667    # IRC server to connect to.
 nickname: WordCountBot      # IRC user name.
-password: XXX               # IRC password. (optional)
-default_period: 300         # Number of seconds in the past that are looked at.
-gcinterval: 600             # Clean old counts every N seconds.
+password: XXX               # IRC password/Twitch OAuth token. (optional)
+default_period: 300         # Number of seconds in the past that are looked at. (optional)
+gcinterval: 600             # Clean old counts every N seconds. (optional)
 max_message_length: 512     # Post messages in chunks of N bytes. (optional)
                             # This includes 'PRIVMSG #CHANNEL_NAME :' and '\r\n'
 state: state.yaml           # Load/dump state from/to file. (optional)
