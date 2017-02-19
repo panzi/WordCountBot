@@ -656,13 +656,13 @@ def main(args):
 		for key in ('host', 'nickname', 'password', 'default_period', 'gcinterval', 'max_message_length', 'state', 'home_channel'):
 			envkey = 'COUNTBOT_'+key.upper()
 			value = os.getenv(envkey)
-			if value is not None:
+			if value:
 				config[key] = value
 
 		for key in ('channels', 'admins', 'ignore'):
 			envkey = 'COUNTBOT_'+key.upper()
 			value = os.getenv(envkey)
-			if value is not None:
+			if value:
 				config[key] = value.split(',')
 	else:
 		with open(opts.config,'rb') as fp:
