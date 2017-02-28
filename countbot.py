@@ -164,18 +164,10 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 		connection.cap('REQ', 'twitch.tv/membership')
 
-	def on_join(self, connection, event):
-		channel = event.target
-		self.chunked_privmsg(self.home_channel or channel, "Joined to %s." % channel)
-
-	def on_part(self, connection, event):
-		if self.home_channel is not None:
-			channel = event.target
-			self.chunked_privmsg(self.home_channel, "Parted from %s." % channel)
-
 	def do_join(self, channel):
 		self.connection.join(channel)
 		self.joined_channels.add(channel)
+		self.chunked_privmsg(self.home_channel or channel, "Joined to %s." % channel)
 
 	def do_part(self, channel):
 		self.connection.part(channel)
@@ -186,6 +178,9 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 		if channel in self.joined_channels:
 			self.joined_channels.remove(channel)
+
+		if self.home_channel is not None:
+			self.chunked_privmsg(self.home_channel, "Parted from %s." % channel)
 
 	def on_nicknameinuse(self, connection, event):
 		print('Error: nickname in use', file=sys.stderr)
