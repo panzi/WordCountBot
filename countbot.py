@@ -164,6 +164,9 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 		connection.cap('REQ', 'twitch.tv/membership')
 
+		if self.home_channel is not None:
+			self.chunked_privmsg(self.home_channel, "%s booted!" % self.connection.get_nickname())
+
 	def do_join(self, channel):
 		self.connection.join(channel)
 		self.joined_channels.add(channel)
@@ -652,6 +655,13 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 		if 'channels' in state:
 			self.set_join_channels(state['channels'])
+
+	def start(self):
+		try:
+			super(CounterBot, self).start()
+		finally:
+			if self.home_channel is not None:
+				self.chunked_privmsg(self.home_channel, '%s is shutting down.' % self.connection.get_nickname())
 
 def main(args):
 	import yaml
