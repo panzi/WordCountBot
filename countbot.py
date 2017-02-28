@@ -157,25 +157,35 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 	def on_welcome(self, connection, event):
 		if self.home_channel is not None:
-			connection.join(self.home_channel)
+			self.do_join(self.home_channel)
+
 		for channel in self.join_channels:
-			connection.join(channel)
+			self.do_join(channel)
+
 		connection.cap('REQ', 'twitch.tv/membership')
 
 	def on_join(self, connection, event):
 		channel = event.target
-		if channel not in self.joined_channels:
-			self.joined_channels.add(channel)
-			self.chunked_privmsg(self.home_channel or channel, "Joined to %s." % channel)
+		self.chunked_privmsg(self.home_channel or channel, "Joined to %s." % channel)
 
 	def on_part(self, connection, event):
-		channel = event.target
+		if self.home_channel is not None:
+			channel = event.target
+			self.chunked_privmsg(self.home_channel, "Parted from %s." % channel)
+
+	def do_join(self, channel):
+		self.connection.join(channel)
+		self.joined_channels.add(channel)
+
+	def do_part(self, channel):
+		self.connection.part(channel)
+
+		# delete data immediately, don't trust what the IRC server says
+		if channel in self.channel_data:
+			del self.channel_data[channel]
 
 		if channel in self.joined_channels:
 			self.joined_channels.remove(channel)
-
-			if self.home_channel is not None:
-				self.chunked_privmsg(self.home_channel, "Parted from %s." % channel)
 
 	def on_nicknameinuse(self, connection, event):
 		print('Error: nickname in use', file=sys.stderr)
@@ -475,7 +485,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		channel = normalize_channel(channel)
 		sender = event.source.nick
 		if self.is_allowed(sender, channel):
-			self.connection.join(channel)
+			self.do_join(channel)
 		else:
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 
@@ -511,7 +521,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 			if channel == self.home_channel:
 				self.answer(event, "@%s: Cannot leave home channel." % sender)
 			else:
-				self.connection.part(channel)
+				self.do_part(channel)
 		else:
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 
