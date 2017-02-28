@@ -138,7 +138,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 		rowcount = 0
 		for channel in delchannels:
-			rowcount += len(self.channel_data[channel])
+			rowcount += len(self.channel_data[channel].counts)
 			del self.channel_data[channel]
 
 		for data in self.channel_data.values():
