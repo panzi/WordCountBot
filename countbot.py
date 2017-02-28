@@ -131,7 +131,16 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 	def run_gc(self):
 		timestamp = timegm(gmtime())
+		delchannels = []
+		for channel in self.channel_data:
+			if channel not in self.joined_channels:
+				delchannels.append(channel)
+
 		rowcount = 0
+		for channel in delchannels:
+			rowcount += len(self.channel_data[channel])
+			del self.channel_data[channel]
+
 		for data in self.channel_data.values():
 			periodts = timestamp - data.period
 			index = 0
@@ -161,9 +170,6 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 	def on_part(self, connection, event):
 		channel = event.target
-
-		if channel in self.channel_data:
-			del self.channel_data[channel]
 
 		if channel in self.joined_channels:
 			self.joined_channels.remove(channel)
@@ -527,7 +533,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 			if not self.is_allowed(event.source.nick, event.target) and len(counts) > MAX_COUNTS:
 				counts = counts[:MAX_COUNTS]
 			self.answer(event, 'Word-counts within the last %s: %s' % (
-				format_time(period), ', '.join('%s: %d' % item for item in counts)))
+				format_time(period), ' — '.join('%s: %d' % item for item in counts)))
 		else:
 			self.answer(event, 'No words counted in the last %s.' % format_time(period))
 
