@@ -105,6 +105,12 @@ class ChannelData:
 			'counts': [list(row) for row in self.counts]
 		}
 
+	def find_first_non_gc_count(self, periodts):
+		for index, (user, word, timestamp) in enumerate(self.counts):
+			if timestamp >= periodts:
+				return index
+		return len(self.counts)
+
 class CounterBot(irc.bot.SingleServerIRCBot):
 	__slots__ = ('home_channel', 'period', 'gcinterval', 'admins', 'ignored_users',
 	             'channel_data', 'join_channels', 'max_message_length')
@@ -121,7 +127,21 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		self.channel_data = defaultdict(lambda: ChannelData(self.default_period))
 		self.joined_channels = set()
 		self.set_join_channels(channels)
+		self.gc_scheduled = False
+		self.schedule_gc_if_needed()
+
+	def schedule_gc_if_needed(self):
+		if not self.gc_scheduled:
+			needed = False
+			for data in self.channel_data.values():
+				if data.counts:
+					needed = True
+					break
+			self.schedule_gc()
+
+	def schedule_gc(self):
 		self.connection.execute_delayed(self.gcinterval, self.run_gc)
+		self.gc_scheduled = True
 
 	def set_join_channels(self, channels):
 		channels = OrderedDict((normalize_channel(channel), True) for channel in channels)
@@ -130,6 +150,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		self.join_channels = list(channels)
 
 	def run_gc(self):
+		self.gc_scheduled = False
 		timestamp = timegm(gmtime())
 		delchannels = []
 		for channel in self.channel_data:
@@ -141,19 +162,22 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 			rowcount += len(self.channel_data[channel].counts)
 			del self.channel_data[channel]
 
+		needed = False
 		for data in self.channel_data.values():
 			periodts = timestamp - data.period
-			index = 0
-			for index, (user, word, timestamp) in enumerate(data.counts):
-				if timestamp >= periodts:
-					break
+			index = data.find_first_non_gc_count(periodts)
 
 			if index > 0:
 				del data.counts[:index]
 				rowcount += index
 
+			if data.counts:
+				needed = True
+
 		print('gc: Deleted %d rows.' % rowcount if rowcount != 1 else 'gc: Deleted 1 row.')
-		self.connection.execute_delayed(self.gcinterval, self.run_gc)
+
+		if needed:
+			self.schedule_gc()
 
 	def on_welcome(self, connection, event):
 		if self.home_channel is not None:
@@ -247,9 +271,13 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		else:
 			timestamp = timegm(gmtime())
 			words = WORDS.findall(message)
-			counts = self.channel_data[channel].counts
-			for word in words:
-				counts.append((sender, normalize(word), timestamp))
+			if words:
+				counts = self.channel_data[channel].counts
+				for word in words:
+					counts.append((sender, normalize(word), timestamp))
+
+				if not self.gc_scheduled:
+					self.schedule_gc()
 
 	def is_allowed(self, user, channel):
 		if user in self.admins:
