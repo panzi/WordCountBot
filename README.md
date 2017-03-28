@@ -6,10 +6,12 @@ only counted once per user and channel. This can be used to do simple votings
 where the users have to mention the thing they vote for in chat and then you get
 the counts with the command `!count THING1 THING2 THING3`.
 
-This bot will be active on Twitch under https://www.twitch.tv/wordcountbot, but
-isn't right now. If you want this bot to join your channel go to the linked
-channel and enter `!join YOUR_CHANNEL_NAME`. You have to be the channel owner or
-a mod of `YOUR_CHANNEL_NAME`.
+This bot is active on Twitch under [https://www.twitch.tv/wordcountbot](https://www.twitch.tv/wordcountbot).
+f you want this bot to join your channel go to that channel and enter
+`!join YOUR_CHANNEL_NAME`. You have to be the channel owner or a mod of
+`YOUR_CHANNEL_NAME`. Note that I currently use Heroku's free plan and thus have
+no persitence. If my one free server instance restarts if forgets all joined
+channels and counted words.
 
 Running the Bot
 ---------------
@@ -33,7 +35,7 @@ prefixed with `COUNTBOT_`. Lists are comma separated.
 Home-Channel Commands
 ---------------------
 
-These commands are only available in the home channel of the bot (which will be
+These commands are only available in the home channel of the bot (which is
 https://www.twitch.tv/wordcountbot or if you run the bot yourself wherever you
 point it to; it can also be omitted).
 
@@ -43,7 +45,7 @@ Show help to given command.
 
 ### !commands
 
-Show the list of commands.
+Show the list of commands (ignoring aliases).
 
 ### !join channel
 
@@ -76,11 +78,19 @@ These commands are available in the channels the bot has joined.
 
 Count given words or if none given all words. Every word is only counted once
 per user and only in the configured time period (the last few seconds/minutes).
+If a non-operator invokes this command the list of results is truncated to 10
+entries to prevent spamming the channel.
+
+**TODO:** Maybe always truncate the list of results? Maybe make the number of
+results configurable (per channel)?
 
 ### !countint
 
 Count integer numbers. Every number is only counted once per user and only in
 the configured time period (the last few seconds/minutes).
+
+Because of common typos there are these aliases for this command: `!countinit`,
+`!initcount`, `!intcount`
 
 ### !count1
 
