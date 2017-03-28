@@ -380,6 +380,10 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 		self.report_counts(event, word_counts)
 
+	cmd_countinit = cmd_countint
+	cmd_intcount  = cmd_countint
+	cmd_initcount = cmd_countint
+
 	def cmd_count1(self, event):
 		"""
 			Count all one-letter words.
@@ -434,10 +438,14 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		sender = event.source.nick
 		for name in dir(self):
 			if name.startswith('cmd_'):
-				channel_commands.append('!'+name[4:])
+				if getattr(self, name).__name__ == name:
+					# otherwise its an alias
+					channel_commands.append('!'+name[4:])
 
 			elif name.startswith('home_cmd_'):
-				home_commands.append('!'+name[9:])
+				if getattr(self, name).__name__ == name:
+					# otherwise its an alias
+					home_commands.append('!'+name[9:])
 
 		channel_commands.sort()
 		home_commands.sort()
@@ -565,7 +573,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		period = self.channel_data[event.target].period
 		if word_counts:
 			counts = list(word_counts.items())
-			counts.sort(key=lambda item: (item[1], item[0]), reverse=True)
+			counts.sort(key=lambda item: (-item[1], item[0]))
 			if not self.is_allowed(event.source.nick, event.target) and len(counts) > MAX_COUNTS:
 				counts = counts[:MAX_COUNTS]
 			self.answer(event, 'Word-counts within the last %s: %s' % (
