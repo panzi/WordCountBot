@@ -3,6 +3,9 @@ nickname: WordCountBot      # IRC user name.
 password: XXX               # IRC password/Twitch OAuth token. (optional)
 default_period: 300         # Number of seconds in the past that are looked at. (optional)
 gcinterval: 600             # Clean old counts every N seconds. (optional)
+default_minint: null        # Default value for !countint minimum value. (optional)
+default_maxint: null        # Default value for !countint maximum value. (optional)
+default_result_limit: 10    # Default value for count result list limit. Can be null. (optional)
 max_message_length: 512     # Post messages in chunks of N bytes. (optional)
                             # This includes 'PRIVMSG #CHANNEL_NAME :' and '\r\n'
 state: state.yaml           # Load/dump state from/to file. (optional)

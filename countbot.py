@@ -14,7 +14,6 @@ from unicodedata import normalize as unicode_normalize
 WORDS = re.compile(r"(?:-\w|\w)[-\w]*")
 TIME = re.compile(r"\s*(\d+)\s*([a-z]+)?\s*")
 
-MAX_COUNTS = 10
 EXIT_EXCS = SystemExit, KeyboardInterrupt
 ROW_TYPES = tuple, list
 
@@ -26,6 +25,13 @@ def normalize_channel(channel):
 	if not channel.startswith('#'):
 		channel = '#'+channel
 	return channel
+
+def parse_int_bound(value):
+	value = value.lower()
+	if value == 'none' or value == 'null' or value == 'unbounded' or value == 'unlimited':
+		return None
+	else:
+		return int(value, 10)
 
 def parse_time(time):
 	if not time:
@@ -92,17 +98,23 @@ def format_time(seconds):
 	return time
 
 class ChannelData:
-	__slots__ = 'period', 'counts'
+	__slots__ = 'period', 'counts', 'minint', 'maxint', 'result_limit'
 
-	def __init__(self, period, counts=None):
+	def __init__(self, period, minint=None, maxint=None, result_limit=None, counts=None):
 		self.period = period
 		self.counts = counts if counts is not None else []
+		self.minint = minint
+		self.maxint = maxint
+		self.result_limit = result_limit
 		# maybe more in the future
 
 	def dump(self):
 		return {
 			'period': self.period,
-			'counts': [list(row) for row in self.counts]
+			'counts': [list(row) for row in self.counts],
+			'minint': self.minint,
+			'maxint': self.maxint,
+			'result_limit': self.result_limit
 		}
 
 	def find_first_non_gc_count(self, periodts):
@@ -113,22 +125,31 @@ class ChannelData:
 
 class CounterBot(irc.bot.SingleServerIRCBot):
 	__slots__ = ('home_channel', 'period', 'gcinterval', 'admins', 'ignored_users',
-	             'channel_data', 'join_channels', 'max_message_length')
+	             'channel_data', 'join_channels', 'max_message_length',
+	             'default_minint', 'default_maxint', 'default_result_limit')
 
 	def __init__(self, home_channel, default_period, gcinterval, max_message_length,
-	             admins, ignored_users, nickname, channels, password=None, server='irc.twitch.tv', port=6667):
+		         default_minint, default_maxint, default_result_limit, admins,
+		         ignored_users, nickname, channels, password=None,
+		         server='irc.twitch.tv', port=6667):
 		irc.bot.SingleServerIRCBot.__init__(self, [(server, port, password)], nickname, nickname)
 		self.home_channel = normalize_channel(home_channel) if home_channel else None
 		self.default_period = default_period
 		self.gcinterval = gcinterval
 		self.max_message_length = max_message_length
+		self.default_minint = default_minint
+		self.default_maxint = default_maxint
+		self.default_result_limit = default_result_limit
 		self.admins = set(admin.lower() for admin in admins)
 		self.ignored_users = set(user.lower() for user in ignored_users)
-		self.channel_data = defaultdict(lambda: ChannelData(self.default_period))
+		self.channel_data = defaultdict(self.make_channel_data)
 		self.joined_channels = set()
 		self.set_join_channels(channels)
 		self.gc_scheduled = False
 		self.schedule_gc_if_needed()
+
+	def make_channel_data(self):
+		return ChannelData(self.default_period, self.default_minint, self.default_maxint, self.default_result_limit)
 
 	def schedule_gc_if_needed(self):
 		if not self.gc_scheduled:
@@ -308,7 +329,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 					self.answer(event, "@%s: Illegal count period: %s" % (sender, time))
 				else:
 					data.period = seconds
-					self.answer(event, "@%s: changed count period to %s" % (sender, format_time(data.period)))
+					self.answer(event, "@%s: Changed count period to %s" % (sender, format_time(data.period)))
 		else:
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 
@@ -351,7 +372,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 		self.report_counts(event, word_counts)
 
-	def cmd_countint(self, event):
+	def cmd_countint(self, event, minint=None, maxint=None):
 		"""
 			Count integer numbers.
 			Every number is only counted once per user.
@@ -359,6 +380,8 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 		timestamp = timegm(gmtime())
 		channel = event.target
 		data = self.channel_data[channel]
+		minint = parse_int_bound(minint) if minint is not None else data.minint
+		maxint = parse_int_bound(maxint) if maxint is not None else data.maxint
 		periodts = timestamp - data.period
 		channel_counts = data.counts
 		all_user_words = defaultdict(set)
@@ -374,7 +397,11 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 				pass
 			else:
 				user_words = all_user_words[user]
-				if num not in user_words:
+				if minint is not None and num < minint:
+					pass
+				elif maxint is not None and num > maxint:
+					pass
+				elif num not in user_words:
 					word_counts[num] += 1
 					user_words.add(num)
 
@@ -420,6 +447,54 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 			rowcount = len(data.counts)
 			del data.counts[:]
 			self.answer(event, 'Deleted %d rows.' % rowcount if rowcount != 1 else 'Deleted 1 row.')
+		else:
+			self.answer(event, "@%s: You don't have permissions to do that." % sender)
+
+	def cmd_countminint(self, event, value=None):
+		"""
+			Get or set channel default minimum integer for !countint.
+		"""
+		sender = event.source.nick
+		channel = event.target
+		data = self.channel_data[channel]
+		if value is None:
+			self.answer(event, "@%s: !countint minimum is %s." % (sender, data.minint if data.minint is not None else 'unbounded'))
+		elif self.is_allowed(sender, channel):
+			data.minint = parse_int_bound(value)
+			self.answer(event, "@%s: Changed !countint minimum to %s" % (sender, data.minint if data.minint is not None else 'unbounded'))
+		else:
+			self.answer(event, "@%s: You don't have permissions to do that." % sender)
+
+	cmd_countintmin = cmd_countminint
+
+	def cmd_countmaxint(self, event, value=None):
+		"""
+			Get or set channel default maximum integer for !countint.
+		"""
+		sender = event.source.nick
+		channel = event.target
+		data = self.channel_data[channel]
+		if value is None:
+			self.answer(event, "@%s: !countint maximum is %s." % (sender, data.maxint if data.maxint is not None else 'unbounded'))
+		elif self.is_allowed(sender, channel):
+			data.maxint = parse_int_bound(value)
+			self.answer(event, "@%s: Changed !countint maximum to %s" % (sender, data.maxint if data.maxint is not None else 'unbounded'))
+		else:
+			self.answer(event, "@%s: You don't have permissions to do that." % sender)
+
+	cmd_countintmax = cmd_countmaxint
+
+	def cmd_count_result_limit(self, event, value=None):
+		"""
+			Get or set channel default result list entry limit.
+		"""
+		sender = event.source.nick
+		channel = event.target
+		data = self.channel_data[channel]
+		if value is None:
+			self.answer(event, "@%s: Count result list entry limit is %s." % (sender, data.result_limit if data.result_limit is not None else 'unlimited'))
+		elif self.is_allowed(sender, channel):
+			data.result_limit = parse_int_bound(value)
 		else:
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 
@@ -541,7 +616,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 					self.answer(event, "@%s: Illegal gcinterval: %s" % (sender, value))
 				else:
 					self.gcinterval = seconds
-					self.answer(event, "@%s: gcinterval changed to %s" % (sender, format_time(self.gcinterval)))
+					self.answer(event, "@%s: Changed gcinterval to %s" % (sender, format_time(self.gcinterval)))
 		else:
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 
@@ -570,12 +645,14 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 			self.answer(event, "@%s: You don't have permissions to do that." % sender)
 
 	def report_counts(self, event, word_counts):
-		period = self.channel_data[event.target].period
+		data = self.channel_data[event.target]
+		period = data.period
 		if word_counts:
+			result_limit = data.result_limit
 			counts = list(word_counts.items())
 			counts.sort(key=lambda item: (-item[1], item[0]))
-			if not self.is_allowed(event.source.nick, event.target) and len(counts) > MAX_COUNTS:
-				counts = counts[:MAX_COUNTS]
+			if result_limit is not None and len(counts) > result_limit:
+				counts = counts[:result_limit]
 			self.answer(event, 'Word-counts within the last %s: %s' % (
 				format_time(period), ' — '.join('%s: %d' % item for item in counts)))
 		else:
@@ -667,10 +744,39 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 				raise ValueError('illegal gcinterval: %r' % gcinterval)
 			self.gcinterval = gcinterval
 
+		if 'default_minint' in state:
+			default_minint = state['default_minint']
+			if default_minint is not None:
+				default_minint = int(default_minint)
+			self.default_minint = default_minint
+		else:
+			default_minint = self.default_minint
+
+		if 'default_maxint' in state:
+			default_maxint = state['default_maxint']
+			if default_maxint is not None:
+				default_maxint = int(default_maxint)
+			self.default_maxint = default_maxint
+		else:
+			default_maxint = self.default_maxint
+
+		if 'default_result_limit' in state:
+			default_result_limit = state['default_result_limit']
+			if default_result_limit is not None:
+				default_result_limit = int(default_result_limit)
+			if default_result_limit < 1:
+				raise ValueError('illegal default_result_limit: %r' % default_result_limit)
+			self.default_result_limit = default_result_limit
+		else:
+			default_result_limit = self.default_result_limit
+
 		if 'channel_data' in state:
-			channel_data = defaultdict(lambda: ChannelData(self.default_period))
+			channel_data = defaultdict(self.make_channel_data)
 			for channel, data in state['channel_data'].items():
 				period = data.get('period', default_period)
+				minint = data.get('minint', default_minint)
+				maxint = data.get('maxint', default_maxint)
+				result_limit = data.get('result_limit', default_result_limit)
 
 				rows = data.get('counts')
 				channel_counts = []
@@ -686,7 +792,7 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 
 						channel_counts.append((user, word, timestamp))
 
-				channel_data[channel] = ChannelData(period, channel_counts)
+				channel_data[channel] = ChannelData(period, minint, maxint, result_limit, channel_counts)
 			self.channel_data = channel_data
 
 		if 'channels' in state:
@@ -710,7 +816,9 @@ def main(args):
 
 	if opts.env_config:
 		config = {}
-		for key in ('host', 'nickname', 'password', 'default_period', 'gcinterval', 'max_message_length', 'state', 'home_channel'):
+		for key in ('host', 'nickname', 'password', 'default_period',
+		            'default_minint', 'default_maxint', 'default_result_limit',
+		            'gcinterval', 'max_message_length', 'state', 'home_channel'):
 			envkey = 'COUNTBOT_'+key.upper()
 			value = os.getenv(envkey)
 			if value:
@@ -729,12 +837,18 @@ def main(args):
 	port = int(port)
 
 	statefile = config.get('state')
+	default_minint = config.get('default_minint')
+	default_maxint = config.get('default_maxint')
+	default_result_limit = config.get('default_result_limit')
 
 	bot = CounterBot(
 		config.get('home_channel'),
 		int(config.get('default_period', 60 * 5)),
 		int(config.get('gcinterval', 60 * 10)),
 		int(config.get('max_message_length', 512)),
+		int(default_minint) if default_minint is not None else None,
+		int(default_maxint) if default_maxint is not None else None,
+		int(default_result_limit) if default_result_limit is not None else None,
 		config.get('admins') or [],
 		config.get('ignore') or [],
 		config['nickname'],
