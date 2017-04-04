@@ -7,7 +7,7 @@ where the users have to mention the thing they vote for in chat and then you get
 the counts with the command `!count THING1 THING2 THING3`.
 
 This bot is active on Twitch under [https://www.twitch.tv/wordcountbot](https://www.twitch.tv/wordcountbot).
-f you want this bot to join your channel go to that channel and enter
+If you want this bot to join your channel go to that channel and enter
 `!join YOUR_CHANNEL_NAME`. You have to be the channel owner or a mod of
 `YOUR_CHANNEL_NAME`. Note that I currently use Heroku's free plan and thus have
 no persitence. If my one free server instance restarts if forgets all joined
