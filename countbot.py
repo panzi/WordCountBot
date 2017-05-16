@@ -6,6 +6,8 @@ import sys
 import irc.bot
 import socket
 import traceback
+import signal
+from irc.client import ServerNotConnectedError
 from time import gmtime
 from calendar import timegm
 from collections import defaultdict, OrderedDict
@@ -667,6 +669,8 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 			self.connection.execute_delayed(1, lambda: self.chunked_privmsg(channel, message))
 
 	def _send_raw(self, bytes):
+		if self.connection.socket is None:
+			raise ServerNotConnectedError("Not connected.")
 		try:
 			self.connection.socket.send(bytes)
 		except socket.error:
@@ -801,9 +805,12 @@ class CounterBot(irc.bot.SingleServerIRCBot):
 	def start(self):
 		try:
 			super(CounterBot, self).start()
+		except InterruptedError:
+			pass
 		finally:
 			if self.home_channel is not None:
-				self.chunked_privmsg(self.home_channel, '%s is shutting down.' % self.connection.get_nickname())
+				if self.connection.socket:
+					self.chunked_privmsg(self.home_channel, '%s is shutting down.' % self.connection.get_nickname())
 
 def main(args):
 	import yaml
@@ -856,6 +863,10 @@ def main(args):
 		config.get('password'),
 		server,
 		port)
+
+	shutdown = lambda signum, frame: bot.disconnect()
+	signal.signal(signal.SIGINT, shutdown)
+	signal.signal(signal.SIGTERM, shutdown)
 
 	config = parser = opts = None
 
